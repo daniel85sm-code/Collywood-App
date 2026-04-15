@@ -14,8 +14,13 @@ st.set_page_config(page_title="Collywood HR System", layout="wide")
 def calcola_ore_totali(inizio_str, fine_str):
     fmt = "%H:%M"
     try:
-        inizio = datetime.strptime(inizio_str.strip(), fmt)
-        fine = datetime.strptime(fine_str.strip(), fmt)
+        # Pulizia stringhe da eventuali spazi
+        inizio_str = str(inizio_str).strip()
+        fine_str = str(fine_str).strip()
+        
+        inizio = datetime.strptime(inizio_str, fmt)
+        fine = datetime.strptime(fine_str, fmt)
+        
         if fine < inizio:
             differenza = (fine + timedelta(days=1)) - inizio
         else:
@@ -71,7 +76,7 @@ if st.session_state.user_role == "Employee":
     if stato_turno == "chiuso":
         if st.button("🚀 INIZIA TURNO", use_container_width=True, type="primary"):
             ora_in = datetime.now().strftime("%H:%M")
-            nuovo = pd.DataFrame([{"Data": str(datetime.now().date()), "Dipendente": st.session_state.user_name, "Inizio": ora_in, "Fine": None, "Ore": 0.0, "Motivazione": "Digitale"}])
+            nuovo = pd.DataFrame([{"Data": str(datetime.now().date()), "Dipendente": st.session_state.user_name, "Inizio": ora_in, "Fine": None, "Ore": 0.0, "Motivazione": "Timbratura Digitale"}])
             nuovo.to_csv(DATABASE_NAME, mode='a', header=not os.path.exists(DATABASE_NAME), index=False)
             st.success(f"Turno iniziato alle {ora_in}")
             st.rerun()
@@ -100,11 +105,18 @@ else:
         st.subheader("Modifica o Elimina Turni")
         if os.path.exists(DATABASE_NAME):
             df = pd.read_csv(DATABASE_NAME)
-            # Questo editor permette di modificare TUTTO e cancellare righe
+            # Editor interattivo
             edited_df = st.data_editor(df, use_container_width=True, num_rows="dynamic")
-            if st.button("💾 Salva Tutte le Modifiche"):
+            
+            if st.button("💾 Salva e Ricalcola Ore"):
+                # Ricalcola le ore per ogni riga prima di salvare
+                for index, row in edited_df.iterrows():
+                    if pd.notnull(row['Inizio']) and pd.notnull(row['Fine']):
+                        edited_df.at[index, 'Ore'] = calcola_ore_totali(row['Inizio'], row['Fine'])
+                
                 edited_df.to_csv(DATABASE_NAME, index=False)
-                st.success("Dati aggiornati con successo!")
+                st.success("Dati ricalcolati e salvati correttamente!")
+                st.rerun()
         else:
             st.info("Ancora nessun dato registrato.")
 
@@ -115,21 +127,26 @@ else:
             f_data = st.date_input("Data")
             f_in = st.time_input("Ora Inizio")
             f_out = st.time_input("Ora Fine")
+            f_mot = st.text_area("Motivazione inserimento manuale")
             if st.form_submit_button("Registra Turno"):
-                ore = calcola_ore_totali(f_in.strftime("%H:%M"), f_out.strftime("%H:%M"))
-                nuovo = pd.DataFrame([{"Data": str(f_data), "Dipendente": f_nome, "Inizio": f_in.strftime("%H:%M"), "Fine": f_out.strftime("%H:%M"), "Ore": ore, "Motivazione": "Manuale"}])
+                ora_i = f_in.strftime("%H:%M")
+                ora_f = f_out.strftime("%H:%M")
+                ore = calcola_ore_totali(ora_i, ora_f)
+                nuovo = pd.DataFrame([{"Data": str(f_data), "Dipendente": f_nome, "Inizio": ora_i, "Fine": ora_f, "Ore": ore, "Motivazione": f_mot}])
                 nuovo.to_csv(DATABASE_NAME, mode='a', header=not os.path.exists(DATABASE_NAME), index=False)
-                st.success("Turno aggiunto!")
+                st.success("Turno aggiunto correttamente!")
+                st.rerun()
 
     with tab3:
         st.subheader("Autorizzazioni Accesso")
         nuova_mail = st.text_input("Email nuovo dipendente").lower().strip()
         if st.button("Aggiungi alla lista"):
             if nuova_mail and "@" in nuova_mail:
-                whitelist.append(nuova_mail)
-                salva_whitelist(whitelist)
-                st.success(f"{nuova_mail} aggiunto!")
-                st.rerun()
+                if nuova_mail not in whitelist:
+                    whitelist.append(nuova_mail)
+                    salva_whitelist(whitelist)
+                    st.success(f"{nuova_mail} aggiunto!")
+                    st.rerun()
         
         st.write("---")
         for e in whitelist:
