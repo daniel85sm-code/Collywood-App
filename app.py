@@ -86,20 +86,61 @@ if st.session_state.user_role == "Employee":
             df.to_csv(DATABASE_NAME, index=False)
             st.success(f"Turno finito alle {ora_out}")
             st.rerun()
+    
+    if st.button("Log-out"):
+        st.session_state.user_role = None
+        st.rerun()
 
 # --- INTERFACCIA MANAGER ---
 else:
     st.title("👨‍💼 Manager Dashboard")
-    tab1, tab2, tab3 = st.tabs(["Monitor", "Storico", "Staff"])
+    tab1, tab2, tab3 = st.tabs(["📊 Storico & Modifica", "➕ Inserimento Manuale", "👥 Gestione Staff"])
+    
     with tab1:
-        st.write("Qui vedi chi sta lavorando ora.")
-    with tab2:
+        st.subheader("Modifica o Elimina Turni")
         if os.path.exists(DATABASE_NAME):
-            st.dataframe(pd.read_csv(DATABASE_NAME))
+            df = pd.read_csv(DATABASE_NAME)
+            # Questo editor permette di modificare TUTTO e cancellare righe
+            edited_df = st.data_editor(df, use_container_width=True, num_rows="dynamic")
+            if st.button("💾 Salva Tutte le Modifiche"):
+                edited_df.to_csv(DATABASE_NAME, index=False)
+                st.success("Dati aggiornati con successo!")
+        else:
+            st.info("Ancora nessun dato registrato.")
+
+    with tab2:
+        st.subheader("Aggiungi Turno a Mano")
+        with st.form("manual_form"):
+            f_nome = st.text_input("Nome Dipendente")
+            f_data = st.date_input("Data")
+            f_in = st.time_input("Ora Inizio")
+            f_out = st.time_input("Ora Fine")
+            if st.form_submit_button("Registra Turno"):
+                ore = calcola_ore_totali(f_in.strftime("%H:%M"), f_out.strftime("%H:%M"))
+                nuovo = pd.DataFrame([{"Data": str(f_data), "Dipendente": f_nome, "Inizio": f_in.strftime("%H:%M"), "Fine": f_out.strftime("%H:%M"), "Ore": ore, "Motivazione": "Manuale"}])
+                nuovo.to_csv(DATABASE_NAME, mode='a', header=not os.path.exists(DATABASE_NAME), index=False)
+                st.success("Turno aggiunto!")
+
     with tab3:
-        # Qui puoi aggiungere le email dei dipendenti
-        nuova = st.text_input("Aggiungi email dipendente")
-        if st.button("Salva"):
-            whitelist.append(nuova)
-            salva_whitelist(whitelist)
-            st.success("Aggiunto!")
+        st.subheader("Autorizzazioni Accesso")
+        nuova_mail = st.text_input("Email nuovo dipendente").lower().strip()
+        if st.button("Aggiungi alla lista"):
+            if nuova_mail and "@" in nuova_mail:
+                whitelist.append(nuova_mail)
+                salva_whitelist(whitelist)
+                st.success(f"{nuova_mail} aggiunto!")
+                st.rerun()
+        
+        st.write("---")
+        for e in whitelist:
+            if e != ADMIN_EMAIL:
+                col1, col2 = st.columns([3, 1])
+                col1.text(e)
+                if col2.button("Elimina", key=e):
+                    whitelist.remove(e)
+                    salva_whitelist(whitelist)
+                    st.rerun()
+
+    if st.sidebar.button("Esci dal sistema"):
+        st.session_state.user_role = None
+        st.rerun()
